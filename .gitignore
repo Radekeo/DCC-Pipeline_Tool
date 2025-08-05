@@ -1,1 +1,10 @@
 env/
+.*
+startup.py
+projects
+*.toml
+mayaLog
+*.lock
+test.py
+__pycache__
+renders/

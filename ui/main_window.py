@@ -1,5 +1,11 @@
 import sys
-from PySide2.QtWidgets import QApplication, QWidget, QPushButton, QLabel, QVBoxLayout, QLineEdit, QComboBox
+import os
+from PySide2.QtWidgets import QApplication, QWidget, QPushButton, QLabel, QVBoxLayout, QDialog
+import subprocess
+
+
+MAYAPY = "/usr/autodesk/maya2023/bin/mayapy"
+HYTHON = "/opt/hfs20.5.332/bin/hython3.11"
 
 class DemoWindow(QWidget):
     def __init__(self):
@@ -7,34 +13,94 @@ class DemoWindow(QWidget):
         self.init_ui()
 
     def init_ui(self):
-        self.setWindowTitle("Render Job Settings")
-        self.label = QLabel("", self)
-        layout = QVBoxLayout()
+        self.setWindowTitle("Pipeline Tool")
+        self.setGeometry(100, 100, 300, 150)
 
-        self.scene_input = QLineEdit()
-        self.renderer_combo = QComboBox()
-        self.renderer_combo.addItems(["Arnold", "Mantra"])
-        self.frame_range = QLineEdit("1-100")
-        self.resolution = QLineEdit("1920x1080")
+        # Create a label and a button
+        self.label = QLabel("Start Project", self)
+        self.button = QPushButton("Run", self)
 
-        submit_btn = QPushButton("Submit")
-        submit_btn.clicked.connect(self.on_button_click)
-
+        # Connect button click to function
+        self.button.clicked.connect(self.on_button_click)
 
         # Layout
-        layout.addWidget(QLabel("Scene File Path"))
-        layout.addWidget(self.scene_input)
-        layout.addWidget(QLabel("Renderer"))
-        layout.addWidget(self.renderer_combo)
-        layout.addWidget(QLabel("Frame Range"))
-        layout.addWidget(self.frame_range)
-        layout.addWidget(QLabel("Resolution"))
-        layout.addWidget(self.resolution)
-        layout.addWidget(submit_btn)
+        layout = QVBoxLayout()
+        layout.addWidget(self.label)
+        layout.addWidget(self.button)
         self.setLayout(layout)
 
     def on_button_click(self):
-        self.label.setText("Button Clicked!")
+        maya_usd_export = subprocess.run(
+            [
+                MAYAPY,
+                "adapters/maya_adapter.py",
+                "export_usd",
+                "--file", "gallery.mb",
+                "--startf", "1",
+                "--endf", "100"
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True  # output to string
+        )
+
+        for line in maya_usd_export.stdout.splitlines():
+            if line.startswith("[MAYA]"):
+                message = line
+                break
+        
+        self.new_frame = FrameWindow(message)
+        self.new_frame.show()
+        
+        # self.label.setText("Button Clicked!") #debugging
+        
+class FrameWindow(QDialog):
+    def __init__(self, message):
+    # def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Frames")
+        self.resize(100,100)
+        self.message = message
+
+        self.button = QPushButton("Hou", self)
+
+        # Connect button click to function
+        self.button.clicked.connect(self.on_button_click)
+
+        layout = QVBoxLayout()
+        label = QLabel()
+        label.setText("Done")
+        label.setText(self.message)
+        # label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(label)
+        layout.addWidget(self.button)
+        self.setLayout(layout)
+
+    def on_button_click(self):
+        # print("RUNNING HOUDINI subprocess...")
+        houdini_usd_to_stage = subprocess.run(
+            [
+                HYTHON,
+                "adapters/houdini.py",
+                "import_usd_to_stage",
+                "--file", "gallery.usda",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True  # output to string
+        )
+        print("STDOUT:")
+        print(houdini_usd_to_stage.stdout)
+
+        print("STDERR:")
+        print(houdini_usd_to_stage.stderr)
+        # for line in houdini_usd_to_stage.stdout.splitlines():
+        #     if line.startswith("[HOUDINI]"):
+        #         self.message = line
+        #         break
+        
+        
+        
 
 # Run the application
 if __name__ == "__main__":

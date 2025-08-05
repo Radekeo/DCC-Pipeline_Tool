@@ -1,15 +1,61 @@
+# export_usd_maya.py
+
+import maya.standalone
 import maya.cmds as cmds
-import os
-from core.assets import register_new_asset
 
-def export_selected_to_alembic(project_root, asset_name):
-    selected = cmds.ls(selection=True)
-    if not selected:
-        cmds.warning("No objects selected for export.")
-        return
+from pathlib import Path
 
-    version_path, export_path = register_new_asset(project_root, asset_name, f\"{asset_name}.abc\")
+class MayaAdapter:
+    def __init__(self, file_name):
+        self.file_name = file_name
+        self.scene = f"data/sample/scene/{file_name}"
+        maya.standalone.initialize(name='python')
 
-    job_str = f\"-frameRange 1 1 -dataFormat ogawa -root {selected[0]} -file {export_path}\"
-    cmds.AbcExport(j=job_str)
-    print(f\"Exported: {export_path}\")
+    def export_usd(self, frame_range):
+        # Open the Maya scene
+        export_scene = Path(self.file_name).with_suffix(".usda")
+        export_path = f"data/sample/scene/{export_scene}"
+        cmds.file(self.scene, o=True, force=True)
+
+        # Ensure plugin is loaded
+        if not cmds.pluginInfo("mayaUsdPlugin", query=True, loaded=True):
+            cmds.loadPlugin("mayaUsdPlugin")
+
+        # Select everything for export
+        cmds.select(allDagObjects=True)
+        
+        # Export to USD
+        cmds.file(
+            export_path,
+            force=True,
+            options=f"exportUVs=1;exportSkels=none;exportSkin=none;exportBlendShapes=0;exportColorSets=1;exportVisibility=1;startTime={frame_range[0]};endTime={frame_range[1]};",
+            typ="USD Export",
+            pr=True,
+            es=True
+        )
+        message = f"[MAYA] Exported USD to {export_path}"
+        return message
+
+    def render(self, file_path):
+        message = "RENDERING"
+        return message
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Maya Adapter CLI")
+    parser.add_argument("function", choices=["export_usd", "render"])
+    parser.add_argument("--file", required=True, help="Scene file name, e.g., scene.mb")
+    parser.add_argument("--startf", type=int, default=1)
+    parser.add_argument("--endf", type=int, default=100)
+    parser.add_argument("--output", help="Render output path")
+
+    args = parser.parse_args()
+    adapter = MayaAdapter(args.file)
+
+    if args.function == "export_usd":
+        print(adapter.export_usd((args.startf, args.endf)))
+    elif args.function == "render":
+        if not args.output:
+            raise ValueError("Render function requires --output path.")
+        print(adapter.render(args.output))
