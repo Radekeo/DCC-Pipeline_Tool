@@ -1,11 +1,16 @@
 import sys
+import time
+import os
 from PySide2.QtWidgets import (
     QApplication, QWidget, QPushButton, QVBoxLayout, QHBoxLayout, QLabel,
     QLineEdit, QFileDialog
 )
 from PySide2.QtCore import Qt
-from progress_window import ProgressWindow
-from project_window import ProjectWindow
+
+from ui.progress_window import ProgressWindow
+from ui.project_window import MainProjectWindow
+from core.utils import check_file_type 
+from core.project import SceneProject
 
 
 class StartWindow(QWidget):
@@ -59,13 +64,19 @@ class NewProjectWindow(QWidget):
     def __init__(self, on_cancel, on_success):
         super().__init__()
         self.setWindowTitle("DCC Pipeline Tool - New Project")
-        self.setFixedSize(400, 200)
+        self.setFixedSize(400, 220)
         self.on_cancel = on_cancel
         self.on_success = on_success
+
+        # --- Error label ---
+        self.error_label = QLabel("")
+        self.error_label.setStyleSheet("color: red;")
+        self.error_label.hide()
 
         # --- Project name field ---
         name_label = QLabel("Project Name:")
         self.name_input = QLineEdit()
+        self.name = self.name_input.text().strip()
 
         name_layout = QHBoxLayout()
         name_layout.addWidget(name_label)
@@ -96,6 +107,7 @@ class NewProjectWindow(QWidget):
 
         # --- Main Layout ---
         layout = QVBoxLayout()
+        layout.addWidget(self.error_label)  # add error display
         layout.addLayout(name_layout)
         layout.addLayout(file_layout)
         layout.addStretch()
@@ -104,46 +116,72 @@ class NewProjectWindow(QWidget):
 
     def select_file(self):
         file_path, _ = QFileDialog.getOpenFileName(
-            self, "Select Project File", "", "All Files (*)"
+            self, "Select Project File", "", "Scene Files (*.usda *.usdc *.ma *.mb *.hip *.hipnc)"
         )
-        if file_path:
-            self.file_display.setText(file_path)
+
+        if not file_path:
+            return
+
+        # file_type = check_file_type(file_path)
+        # if not file_type:
+        #     self.error_label.setText("Unsupported file type selected.")
+        #     self.error_label.show()
+        #     return
+
+        self.error_label.hide()
+        self.file_display.setText(file_path)  # Just show selected file path
+
 
     def create_project(self):
         project_name = self.name_input.text().strip()
         file_path = self.file_display.text().strip()
 
-        # Simulate validation
         if not project_name or not file_path:
-            self.setWindowTitle("Missing info!")
+            self.error_label.setText("Project name and file are required.")
+            self.error_label.show()
             return
 
-        # Simulate project creation and trigger next step
-        print(f"Creating project: {project_name} from {file_path}")
+        self.error_label.hide()
+
+        file_type = check_file_type(file_path)
 
         def after_progress():
-            self.project_window = ProjectWindow()
-            self.project_window.show()
-            self.on_success()
-            self.close()  # this closes 1a/1b
+            try:
+                np = SceneProject()
+                np.create_new(project_name, file_path, file_type)
 
-            # self.on_success()
+                # Open main project window
+                self.metadata = np.config.load()
+                self.project_window = MainProjectWindow(metadata=self.metadata)
+                self.project_window.show()
+                self.on_success()
+                self.close()
+
+            except FileExistsError as e:
+                self.error_label.setText(str(e))
+                self.error_label.show()
+            except Exception as e:
+                self.error_label.setText(f"Error creating project: {e}")
+                self.error_label.show()
+
+        # Simulate longer progress window for non-USD files
+        progress_duration = 4000 if file_type in ["maya", "houdini"] else 2000
 
         self.progress = ProgressWindow(
             message="Creating project...",
-            duration=3000,
+            duration=progress_duration,
             on_complete=after_progress
         )
+
+
         self.progress.show()
         self.close()
-
 
     def cancel(self):
         self.close()
         self.on_cancel()
 
     def closeEvent(self, event):
-        # Trigger cancel behavior when the window is closed via 'X'
         self.on_cancel()
         event.accept()
 
@@ -151,13 +189,13 @@ class ExistingProjectWindow(QWidget):
     def __init__(self, on_cancel, on_success):
         super().__init__()
         self.setWindowTitle("DCC Pipeline Tool - Open Project")
-        self.setFixedSize(400, 100)
+        self.setFixedSize(400, 150)
         self.on_cancel = on_cancel
         self.on_success = on_success
 
         # --- Project tag input with button beside ---
         self.tag_input = QLineEdit()
-        self.tag_input.setPlaceholderText("Enter project tag...")
+        self.tag_input.setPlaceholderText("Enter project tag (e.g., @MyProject)")
 
         load_button = QPushButton("Load Project")
         load_button.clicked.connect(self.load_project)
@@ -166,9 +204,15 @@ class ExistingProjectWindow(QWidget):
         tag_row.addWidget(self.tag_input)
         tag_row.addWidget(load_button)
 
+        # --- Error label ---
+        self.error_label = QLabel("")
+        self.error_label.setStyleSheet("color: red;")
+        self.error_label.hide()
+
         # --- Main layout ---
         layout = QVBoxLayout()
         layout.addLayout(tag_row)
+        layout.addWidget(self.error_label)
         self.setLayout(layout)
 
     def load_project(self):
@@ -178,15 +222,25 @@ class ExistingProjectWindow(QWidget):
             self.setWindowTitle("Enter a project tag!")
             return
 
-        print(f"Loading project: {project_tag}")
-        # self.close()
-        # self.on_success()
         def after_progress():
-            self.project_window = ProjectWindow()
-            self.project_window.show()
-            self.on_success()
-            self.close()
-            # self.on_success()
+            try:
+                sp = SceneProject()
+                self.metadata = sp.load_existing(project_tag)
+                self.project_dir = self.metadata.get("project_dir", "")
+                config_path = os.path.join(self.project_dir, "Config", "metadata.yaml")
+
+                # Open Project
+                self.project_window = MainProjectWindow(metadata_file=config_path)
+                self.project_window.show()
+
+                self.on_success()
+                self.close()
+            except FileNotFoundError as e:
+                print(f"-----ERROR: {e} ---")
+                self.setWindowTitle(str(e))
+            except Exception as e:
+                print(f"-----ERROR: {e} ---")
+                self.setWindowTitle(f"Error loading project: {e}")
 
         self.progress = ProgressWindow(
             message="Loading project...",
@@ -194,8 +248,15 @@ class ExistingProjectWindow(QWidget):
             on_complete=after_progress
         )
         self.progress.show()
-        self.close()
 
+    def load_existing_project(self, project_tag):
+        """Wrapper for SceneProject().load_existing to make testing easier."""
+        sp = SceneProject()
+        return sp.load_existing(project_tag)
+
+    def show_error(self, message):
+        self.error_label.setText(message)
+        self.error_label.show()
 
     def closeEvent(self, event):
         self.on_cancel()

@@ -3,6 +3,8 @@ import shutil
 from datetime import datetime
 import yaml
 from pathlib import Path
+import logging
+
 
 from core.utils import convert_to_usd
 
@@ -24,10 +26,8 @@ class SceneProject:
         os.makedirs(project_dir)
 
         # --- Create folder structure ---
-        # shots_dir = os.path.join(project_dir, "Shots")
         render_dir = os.path.join(project_dir, "Renders")
         # config_dir = os.path.join(project_dir, "Config")
-        # os.makedirs(scene_dir)
         os.makedirs(render_dir)
         # os.makedirs(config_dir)
 
@@ -41,31 +41,14 @@ class SceneProject:
             dest_scene_path = os.path.join(project_dir, os.path.basename(file_path))
             shutil.copy(file_path, dest_scene_path)
 
-        # --- Build metadata (all paths relative to project dir) ---
         self.project_path = project_dir
-        # self.metadata = {
-        #     "project_name": project_name,
-        #     "project_tag": f"@{project_name}",
-        #     "created_by": DEFAULT_USER,
-        #     "created_at": datetime.now().isoformat(),
-        #     "scene_file": scene_file,
-        #     "shots": [],  # Will be populated in Step 3
-        #     "root_dir": ROOT_DIR,
-        #     "project_dir": project_dir
-        # }
-
-        # self.save_metadata()
-
+        # self._setup_logging(self.project_path)
         # --- Initialize ProjectConfig ---
         self.config = ProjectConfig(project_name, project_dir, scene_file)
 
         print(f"New project '{project_name}' created at '{self.project_path}'.")
 
-    # def save_metadata(self):
-    #     config_path = os.path.join(self.project_path, "Config", "metadata.yaml")
-    #     with open(config_path, "w") as f:
-    #         yaml.safe_dump(self.metadata, f, sort_keys=False)
-
+    
     def load_existing(self, project_tag):
         project_name = project_tag.lstrip("@")
         project_dir = os.path.join(ROOT_DIR, project_name)
@@ -81,13 +64,28 @@ class SceneProject:
         print(f"Loaded project '{self.metadata['project_name']}' from '{project_dir}'.")
         return self.metadata
 
+    def _setup_logging(self, project_dir):
+        log_file = os.path.join(project_dir, "Config", "project.log")
+        handler = logging.FileHandler(log_file)
+        formatter = logging.Formatter(
+            "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S"
+        )
+        handler.setFormatter(formatter)
+
+        # Avoid duplicate handlers when reopening project
+        if not self.logger.handlers:
+            self.logger.addHandler(handler)
+
+        self.logger.info("Logging initialized for project at %s", project_dir)
+
 
 class ProjectConfig:
     def __init__(self, project_name, project_dir, scene=None):
         self.project_name = project_name
-        project_dir = os.path.join(ROOT_DIR, project_name)
+        self.project_dir = project_dir
         self.scene_file = scene
-        self.config_dir = os.path.join(project_dir, "Config")
+        self.config_dir = os.path.join(self.project_dir, "Config")
         self.yaml_path = os.path.join(self.config_dir, "metadata.yaml")
         self.data = {
             "project_name": self.project_name,
@@ -104,8 +102,7 @@ class ProjectConfig:
         }
 
         if not os.path.exists(self.config_dir):
-            os.makedirs(self.config_dir)
-        
+            os.makedirs(self.config_dir)        
         if os.path.exists(self.yaml_path):
             self.load()
         else:

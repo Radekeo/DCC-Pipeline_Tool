@@ -3,7 +3,7 @@ from PySide2.QtWidgets import (
     QComboBox, QSpinBox
 )
 from PySide2.QtCore import Qt
-from progress_window import ProgressWindow
+from ui.progress_window import ProgressWindow
 
 
 class RenderSettingsWindow(QWidget):

@@ -6,24 +6,27 @@ import maya.cmds as cmds
 from pathlib import Path
 
 class MayaAdapter:
-    def __init__(self, file_name):
-        self.file_name = file_name
-        self.scene = f"data/sample/scene/{file_name}"
+    def __init__(self, root_dir, scene_name, file_path):
+        self.project_name = scene_name
+        self.project_dir = root_dir
+        self.scene = file_path
         maya.standalone.initialize(name='python')
 
     def export_usd(self, frame_range):
         # Open the Maya scene
-        export_scene = Path(self.file_name).with_suffix(".usda")
-        export_path = f"data/sample/scene/{export_scene}"
         cmds.file(self.scene, o=True, force=True)
-
+        
         # Ensure plugin is loaded
         if not cmds.pluginInfo("mayaUsdPlugin", query=True, loaded=True):
             cmds.loadPlugin("mayaUsdPlugin")
 
         # Select everything for export
         cmds.select(allDagObjects=True)
-        
+
+        # USD File Name and Export Location
+        export_scene = Path((self.project_name).lower()).with_suffix(".usda")
+        export_path = f"{self.project_dir}/{self.project_name}/{export_scene}"
+
         # Export to USD
         cmds.file(
             export_path,
@@ -45,13 +48,15 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Maya Adapter CLI")
     parser.add_argument("function", choices=["export_usd", "render"])
+    parser.add_argument("--directory", default="TEMP")
+    parser.add_argument("--scene", required=True, help="Project name")
     parser.add_argument("--file", required=True, help="Scene file name, e.g., scene.mb")
     parser.add_argument("--startf", type=int, default=1)
     parser.add_argument("--endf", type=int, default=100)
     parser.add_argument("--output", help="Render output path")
 
     args = parser.parse_args()
-    adapter = MayaAdapter(args.file)
+    adapter = MayaAdapter(args.directory, args.scene, args.file)
 
     if args.function == "export_usd":
         print(adapter.export_usd((args.startf, args.endf)))
