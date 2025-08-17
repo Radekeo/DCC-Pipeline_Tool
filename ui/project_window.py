@@ -153,7 +153,7 @@ class MainProjectWindow(QWidget):
         self.progress.show()
 
     def open_render_settings(self):
-        self.render_settings = RenderSettingsWindow()
+        self.render_settings = RenderSettingsWindow(dir=self.project_path)
         self.render_settings.show()
         # print("Opening Render Settings window (Window 4)…")
         # Placeholder for now
