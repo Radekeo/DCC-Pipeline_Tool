@@ -4,35 +4,33 @@ import yaml
 
 from PySide2.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,  QLineEdit, QListWidget,QListWidgetItem,
-    QSplitter, QTreeWidget, QTreeWidgetItem, QMessageBox
+    QSplitter, QTreeWidget, QTreeWidgetItem, QMessageBox, QTextEdit, QFrame
 )
 from PySide2.QtCore import Qt, QTimer
-from PySide2.QtGui import QIcon, QImage, QPainter
+from PySide2.QtGui import QIcon, QImage, QPainter, QPixmap
+
 # from pxr import Usd, UsdImagingGL, Gf
 
 from ui.progress_window import ProgressWindow
 from ui.render_window import RenderSettingsWindow
+from ui.render_gallery import ManageShotsWindow3Panel
 
 
 class MainProjectWindow(QWidget):
     def __init__(self, metadata_file=None, metadata=None):
         super().__init__()
         self.metadata_file = metadata_file
-        
-        if self.metadata_file:
-            self.metadata = self.load_metadata(self.metadata_file)
-        elif metadata:
-            self.metadata = metadata
-        else:
-            raise ValueError("Must provide either metadata or metadata_file")
-
+        self.metadata = self.load_metadata(self.metadata_file)
+    
         self.scene_file = self.metadata.get("scene_file", "No scene file")
         self.project_path = self.metadata.get("project_dir", "")
+
+        self.render_settings = RenderSettingsWindow(dir=self.project_path, project=self.metadata)
         
         self.logger = logging.getLogger(__name__)
 
         self.setWindowTitle(f"Project - {self.metadata.get('project_name', 'Untitled')}")
-        self.setMinimumSize(800, 500)
+        self.setMinimumSize(500, 300)
 
         # --- Left: Viewport ---
         # Load Stage
@@ -42,27 +40,33 @@ class MainProjectWindow(QWidget):
         # Create and embed usdviewq widget
         # self.viewport = Usdviewq.ViewerWidget()
         # self.viewport.setStage(stage)
-        self.viewport = QLabel(f"USD Viewport Placeholder\n({self.scene_file})")
-        self.viewport.setAlignment(Qt.AlignCenter)
-        self.viewport.setStyleSheet("border: 1px solid gray;")
+        # self.viewport = QLabel(f"USD Viewport Placeholder\n({self.scene_file})")
+        # self.viewport.setAlignment(Qt.AlignCenter)
+        # self.viewport.setStyleSheet("border: 1px solid gray;")
 
         # --- Right: Project structure + controls ---
         self.project_structure = QTreeWidget()
         self.project_structure.setHeaderHidden(True)
-
+        
+        # Buttons
         self.manage_shots_btn = QPushButton("Manage Shots")
-        self.test_render_btn = QPushButton("Test Render")
+        self.view_project_btn = QPushButton("Project View")
+        # self.test_render_btn = QPushButton("Test Render")
         self.render_settings_btn = QPushButton("Render Settings")
+        self.close_btn = QPushButton("Close")   
 
         self.manage_shots_btn.clicked.connect(self.open_manage_shots)
-        self.test_render_btn.clicked.connect(self.test_render)
+        self.view_project_btn.clicked.connect(self.open_shots_dir)
+        # self.test_render_btn.clicked.connect(self.test_render)
         self.render_settings_btn.clicked.connect(self.open_render_settings)
+        self.close_btn.clicked.connect(self.close)
 
         right_panel = QVBoxLayout()
         right_panel.addWidget(QLabel("Project Structure"))
         right_panel.addWidget(self.project_structure)
         right_panel.addWidget(self.manage_shots_btn)
-        right_panel.addWidget(self.test_render_btn)
+        right_panel.addWidget(self.view_project_btn)
+        # right_panel.addWidget(self.test_render_btn)
         right_panel.addWidget(self.render_settings_btn)
         right_panel.addStretch()
 
@@ -71,12 +75,18 @@ class MainProjectWindow(QWidget):
 
         # --- Split view ---
         splitter = QSplitter(Qt.Horizontal)
-        splitter.addWidget(self.viewport)
+        # splitter.addWidget(self.viewport)
         splitter.addWidget(right_widget)
         splitter.setSizes([600, 200])  # adjust initial proportions
 
+        # Place it at the bottom-right
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()  # Push button to the right
+        button_layout.addWidget(self.close_btn)
+
         main_layout = QVBoxLayout()
         main_layout.addWidget(splitter)
+        main_layout.addLayout(button_layout)
         self.setLayout(main_layout)
 
         self.refresh_project_structure()
@@ -108,41 +118,76 @@ class MainProjectWindow(QWidget):
         
     def refresh_project_structure(self):
         """Scan project 'Shots' directory and list shots + renders."""
+        # Shots
         self.project_structure.clear()
         shot_list = self.metadata.get('shots', [])
         shot_struct = self.metadata.get("shot_struct", {})
+
+        # Renders
         renders = self.metadata.get("renders", {})
         render_settings = self.metadata.get("renderSettings", {})
         
         # Folder icon for Shots root
         shots_item = QTreeWidgetItem(["Shots"])
         shots_item.setIcon(0, QIcon.fromTheme("folder"))
+
         self.project_structure.addTopLevelItem(shots_item)
         
         if shot_list:
             for shot_name in shot_list:
+                frames = shot_struct.get(shot_name, [1, 100])
                 shot_item = QTreeWidgetItem([shot_name])
                 shot_item.setIcon(0, QIcon.fromTheme("image-x-generic"))
-                shots_item.addChild(shot_item)
 
+                shots_item.addChild(shot_item)                
+                
                 # Frames
                 frames = shot_struct.get(shot_name)
+
+                # Add Render Icon to NamedShot Top Level
+                render_btn = QPushButton()
+                render_btn.setIcon(QIcon.fromTheme("media-playback-start"))  # or your custom icon
+                render_btn.setMaximumSize(10, 15)     
+                render_btn.setToolTip(f"Render {shot_name}")
+                render_btn.clicked.connect(lambda checked=False, s=shot_name, f=frames: self.open_render_for_shot(s, f))
+
+                if self.project_structure.columnCount() < 2:
+                    self.project_structure.setColumnCount(2)
+                self.project_structure.setItemWidget(shot_item, 1, render_btn)
+
                 if frames and isinstance(frames, (tuple, list)) and len(frames) == 2:
                     for i in range(frames[0], frames[1] + 1):  # ✅ inclusive range
                         frame_item = QTreeWidgetItem([f"Frame {i}"])
                         frame_item.setIcon(0, QIcon.fromTheme("text-x-generic"))
                         shot_item.addChild(frame_item)
+
                 else:
                     self.logger.warning(f"Invalid frame data for shot '{shot_name}': {frames}")                   
         else:
             no_shots_item = QTreeWidgetItem(["No shots found"])
             shots_item.addChild(no_shots_item)
 
+    def open_render_for_shot(self, shot_name, frames):
+        """Open the RenderSettingsWindow with the shot's frame range prefilled."""
+        start_frame, end_frame = frames
+        # render_window = RenderSettingsWindow(self.project_path, project=self.metadata)
+        self.render_settings.start_frame.setValue(start_frame)
+        self.render_settings.end_frame.setValue(end_frame)
+        self.open_render_settings()
+
     def open_manage_shots(self):
         # print("Opening Manage Shots window (Window 3)…")
         self.shots_manager = ManageShotsWindow(main_window=self)
         self.shots_manager.show()
         # Placeholder for now
+
+    def open_shots_dir(self):
+        if not hasattr(self, "project_view") or self.project_view is None:
+            self.project_view = ManageShotsWindow3Panel(main_window=self)
+        self.project_view.show()
+        self.project_view.raise_()
+        self.project_view.activateWindow()
+
 
     def test_render(self):
         print("Simulating test render…")
@@ -153,10 +198,7 @@ class MainProjectWindow(QWidget):
         self.progress.show()
 
     def open_render_settings(self):
-        self.render_settings = RenderSettingsWindow(dir=self.project_path)
         self.render_settings.show()
-        # print("Opening Render Settings window (Window 4)…")
-        # Placeholder for now
 
     def closeEvent(self, event):
         print("Closing Project Window. Exiting application.")
@@ -343,6 +385,51 @@ class ManageShotsWindow(QWidget):
 
     def cancel(self):
         self.close()
+
+
+# class ManageShotsWindow3Panel(QWidget):
+#     def __init__(self, main_window):
+#         super().__init__()
+#         self.setWindowTitle("Shots Manager - 3 Panel View")
+#         self.setFixedSize(1200, 600)
+#         self.main_window = main_window
+
+#         layout = QHBoxLayout()
+
+#         # Left panel (Shot list)
+#         self.shot_tree = QTreeWidget()
+#         self.shot_tree.setHeaderLabels(["Shots"])
+#         self.populate_shot_tree()
+#         layout.addWidget(self.shot_tree, 2)
+
+#         # --- Middle panel (Render Gallery instead of plain QLabel) ---
+#         self.image_viewer = RenderGallery()
+#         layout.addWidget(self.image_viewer, 4)
+
+#         # Right panel (Render settings placeholder)
+#         self.render_settings_panel = QLabel("Render Settings")
+#         self.render_settings_panel.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+#         self.render_settings_panel.setStyleSheet("border: 1px solid gray;")
+#         layout.addWidget(self.render_settings_panel, 3)
+
+#         self.setLayout(layout)
+
+#     def populate_shot_tree(self):
+#         """Populate left panel with shots from metadata."""
+#         self.shot_tree.clear()
+#         shot_list = self.main_window.metadata.get("shots", [])
+#         shot_struct = self.main_window.metadata.get("shot_struct", {})
+
+#         for shot_name in shot_list:
+#             shot_item = QTreeWidgetItem([shot_name])
+#             self.shot_tree.addTopLevelItem(shot_item)
+
+#             frames = shot_struct.get(shot_name, [])
+#             if frames and isinstance(frames, (list, tuple)) and len(frames) == 2:
+#                 for i in range(frames[0], frames[1] + 1):
+#                     frame_item = QTreeWidgetItem([f"Frame {i}"])
+#                     shot_item.addChild(frame_item)
+
 
 # class USDViewportWidget(QWidget):
 #     def __init__(self, usd_file, parent=None):

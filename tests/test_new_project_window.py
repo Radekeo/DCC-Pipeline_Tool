@@ -16,33 +16,29 @@ def window():
     """Fresh NewProjectWindow for each test."""
     return NewProjectWindow(on_cancel=lambda: None, on_success=lambda: None)
 
+import pytest
+from unittest.mock import MagicMock, patch
+
 def test_create_project_success(window):
-    """Should create a project when name and file are valid."""
     window.name_input.setText("TestProject")
     window.file_display.setText("/path/to/file.usda")
 
     # Mock SceneProject instance
     mock_scene_project = MagicMock()
-    mock_scene_project.create_new = MagicMock()  # won't raise
+    mock_scene_project.create_new = MagicMock(return_value=None)
     mock_scene_project.config = MagicMock()
-    mock_scene_project.config.load.return_value = {"shots": []}
+    mock_scene_project.config.load.return_value = ("mock_metadata_file.yaml", {"shots": []})
 
-    # Patch SceneProject where NewProjectWindow actually imports it
     with patch("ui.start_window.SceneProject", return_value=mock_scene_project):
-        # Patch ProgressWindow to immediately call on_complete
         with patch("ui.start_window.ProgressWindow") as mock_progress:
             def side_effect(message, duration, on_complete):
                 on_complete()
                 return MagicMock()
             mock_progress.side_effect = side_effect
 
-            # Call the method that creates the project
             window.create_project()
 
-            # Ensure no error message was shown
             assert window.error_label.text() == ""
-
-            # Ensure create_new was called correctly
             mock_scene_project.create_new.assert_called_once_with(
                 "TestProject", "/path/to/file.usda", "usd"
             )

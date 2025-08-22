@@ -116,7 +116,7 @@ class NewProjectWindow(QWidget):
 
     def select_file(self):
         file_path, _ = QFileDialog.getOpenFileName(
-            self, "Select Project File", "", "Scene Files (*.usda *.usdc *.ma *.mb *.hip *.hipnc)"
+            self, "Select Project File", "", "Scene Files (*.usda *.usdc *.usd *.ma *.mb *.hip *.hipnc)"
         )
 
         if not file_path:
@@ -151,8 +151,8 @@ class NewProjectWindow(QWidget):
                 np.create_new(project_name, file_path, file_type)
 
                 # Open main project window
-                self.metadata = np.config.load()
-                self.project_window = MainProjectWindow(metadata=self.metadata)
+                self.metadata_file, self.metadata = np.config.load()
+                self.project_window = MainProjectWindow(metadata_file=self.metadata_file)
                 self.project_window.show()
                 self.on_success()
                 self.close()
@@ -165,7 +165,7 @@ class NewProjectWindow(QWidget):
                 self.error_label.show()
 
         # Simulate longer progress window for non-USD files
-        progress_duration = 4000 if file_type in ["maya", "houdini"] else 2000
+        progress_duration = 5000 if file_type in ["maya", "houdini"] else 2000
 
         self.progress = ProgressWindow(
             message="Creating project...",
@@ -215,6 +215,9 @@ class ExistingProjectWindow(QWidget):
         layout.addWidget(self.error_label)
         self.setLayout(layout)
 
+        # Scene Project
+        self.sp = SceneProject()
+
     def load_project(self):
         project_tag = self.tag_input.text().strip()
 
@@ -224,13 +227,12 @@ class ExistingProjectWindow(QWidget):
 
         def after_progress():
             try:
-                sp = SceneProject()
-                self.metadata = sp.load_existing(project_tag)
+                self.metadata = self.sp.load_existing(project_tag)
                 self.project_dir = self.metadata.get("project_dir", "")
-                config_path = os.path.join(self.project_dir, "Config", "metadata.yaml")
+                project_config_path = os.path.join(self.project_dir, "Config", "metadata.yaml")
 
                 # Open Project
-                self.project_window = MainProjectWindow(metadata_file=config_path)
+                self.project_window = MainProjectWindow(metadata_file=project_config_path)
                 self.project_window.show()
 
                 self.on_success()
@@ -251,8 +253,7 @@ class ExistingProjectWindow(QWidget):
 
     def load_existing_project(self, project_tag):
         """Wrapper for SceneProject().load_existing to make testing easier."""
-        sp = SceneProject()
-        return sp.load_existing(project_tag)
+        return self.sp.load_existing(project_tag)
 
     def show_error(self, message):
         self.error_label.setText(message)

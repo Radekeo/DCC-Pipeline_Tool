@@ -5,7 +5,6 @@ import yaml
 from pathlib import Path
 import logging
 
-
 from core.utils import convert_to_usd
 
 DEFAULT_USER = "ADMIN"
@@ -27,24 +26,28 @@ class SceneProject:
 
         # --- Create folder structure ---
         render_dir = os.path.join(project_dir, "Renders")
-        # config_dir = os.path.join(project_dir, "Config")
+        scene_dir = os.path.join(project_dir, "Scene")
         os.makedirs(render_dir)
-        # os.makedirs(config_dir)
+        os.makedirs(scene_dir)
 
-        # --- Copy or convert scene file ---
+        # --- Copy scene file to project directory---
+        scene_files = []
+        scene_file = os.path.basename(file_path)
+        scene_files.append(scene_file)
+        
         if file_type in ["maya", "houdini"]:
-            convert_to_usd(project_name, file_path, file_type)
-            scene_file = str(Path((project_name).lower()).with_suffix(".usda"))
-
-        else:
-            scene_file = os.path.basename(file_path)
-            dest_scene_path = os.path.join(project_dir, os.path.basename(file_path))
-            shutil.copy(file_path, dest_scene_path)
+            usd_file = convert_to_usd(project_name, file_path, file_type)[0]
+            scene_files.append(usd_file)
+        
+        dest_scene_path = os.path.join(scene_dir, os.path.basename(file_path))
+        shutil.copy(file_path, dest_scene_path)
 
         self.project_path = project_dir
         # self._setup_logging(self.project_path)
+
         # --- Initialize ProjectConfig ---
-        self.config = ProjectConfig(project_name, project_dir, scene_file)
+        self.config = ProjectConfig(project_name, project_dir, scene_files)
+        self.config.save()
 
         print(f"New project '{project_name}' created at '{self.project_path}'.")
 
@@ -81,16 +84,16 @@ class SceneProject:
 
 
 class ProjectConfig:
-    def __init__(self, project_name, project_dir, scene=None):
+    def __init__(self, project_name, project_dir, scenes=None):
         self.project_name = project_name
         self.project_dir = project_dir
-        self.scene_file = scene
+        self.scene_files = scenes
         self.config_dir = os.path.join(self.project_dir, "Config")
         self.yaml_path = os.path.join(self.config_dir, "metadata.yaml")
         self.data = {
             "project_name": self.project_name,
             "project_tag" : f"@{self.project_name}",
-            "scene_file": self.scene_file,
+            "scene_file": self.scene_files,
             "project_dir": project_dir,
             "shots": [],
             "shot_struct": {},
@@ -111,7 +114,7 @@ class ProjectConfig:
     def load(self):
         with open(self.yaml_path, "r") as f:
             self.data = yaml.safe_load(f) or self.data
-        return self.data
+        return self.yaml_path, self.data
 
     def save(self):
         with open(self.yaml_path, "w") as f:
