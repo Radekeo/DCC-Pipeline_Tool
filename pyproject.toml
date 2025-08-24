@@ -1,0 +1,25 @@
+[project]
+name = "msc"
+version = "0.1.0"
+description = "Streamlining workflow within Maya, Houdini and Nuke"
+readme = "README.md"
+requires-python = ">=3.9.7"
+dependencies = [
+    "setuptools==80.9.0",
+    "wheel==0.45.1",
+    "pyopengl==3.1.9",
+    "pyyaml",
+    "GitPython",
+    "pytest",
+    "pyside2==5.12.3",
+    "git-lfs>=1.6",
+    "usd-core>=25.8",
+    "openexr>=3.3.5",
+    "imath>=0.0.2",
+    "pillow>=11.3.0",
+    "usd2gltf>=0.3.5",
+    "numpy<2",
+    "pyside6>=6.9.1",
+    "openimageio>=3.0.6.1",
+    "pyinstaller>=6.15.0",
+]
