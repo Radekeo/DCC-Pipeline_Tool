@@ -44,6 +44,8 @@ to see this window
 
 ![Start Window](sample/start.png)
 
+Create a new project using a scene file; the program accepts .ma,.mb,.usd,.usda,.usdc files. You can use the [sample file](sample/scene.mb)
+
 
 
 # [Project Architecture](architecture.md)
