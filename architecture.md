@@ -53,7 +53,7 @@ Manages project data, structure, and configuration.
 Handles creation, saving, loading, and validation of projects.
 
 Key classes are:
-```SceneProject``` which handles the creation and loading of projects and ```ProjectConfig``` which creates the configuration file, and saves, loads and updates the project metadata in a ```metadata.yaml``` file
+`SceneProject` which handles the creation and loading of projects and `ProjectConfig` which creates the configuration file, and saves, loads and updates the project metadata in a `metadata.yaml` file
 
 ### rendering.py
 
